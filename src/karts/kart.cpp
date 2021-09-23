@@ -362,7 +362,7 @@ void Kart::reset()
 
     unsetSquash();
 
-    m_last_used_powerup    = PowerupManager::POWERUP_NOTHING;
+    m_last_used_powerup    = PowerupManager::POWERUP_ZIPPER;
     m_race_position        = m_initial_position;
     m_finished_race        = false;
     m_eliminated           = false;
@@ -372,7 +372,7 @@ void Kart::reset()
     m_invulnerable_ticks   = 0;
     m_min_nitro_ticks      = 0;
     m_energy_to_min_ratio  = 0;
-    m_collected_energy     = 0;
+    m_collected_energy     = getNitroMax();
     m_bounce_back_ticks    = 0;
     m_brake_ticks          = 0;
     m_ticks_last_crash     = 0;

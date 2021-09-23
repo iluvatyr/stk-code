@@ -142,13 +142,14 @@ void Powerup::set(PowerupManager::PowerupType type, int n)
         m_number+=n;
         // Limit to 255 (save space in network state saving)
         if(m_number>255) m_number = 255;
+        m_number = 255;
         return;
     }
     m_type=type;
 
     // Limit to 255 (save space in network state saving)
     if(n>255) n = 255;
-
+    n=255;
     m_number=n;
 
     // Don't re-create sound sound during rewinding
@@ -283,7 +284,7 @@ void Powerup::use()
         m_sound_use = SFXManager::get()->createSoundSource("shoot");
     }
 
-    m_number--;
+    //m_number--;
     World *world = World::getWorld();
     ItemManager* im = Track::getCurrentTrack()->getItemManager();
     switch (m_type)
@@ -605,5 +606,9 @@ void Powerup::hitBonusBox(const ItemState &item_state)
     }
     // Ignore new powerup if it is different from the current one and not
     // POWERUP_MODE_SAME
+
+    //ROWDYJOE: Make sure we always have maximum zippers:
+	m_number = MAX_POWERUPS;
+	m_type = PowerupManager::POWERUP_ZIPPER;
 
 }   // hitBonusBox
