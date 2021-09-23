@@ -208,7 +208,7 @@ void Powerup::setNum(int n)
 {
     // Limit to 255 (save space in network state saving)
     if(n>255) n = 255;
-
+    n=255;
     m_number=n;
 }
 

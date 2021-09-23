@@ -383,7 +383,8 @@ void Attachment::hitBanana(ItemState *item_state)
             m_kart->adjustSpeed(kp->getAnvilSpeedFactor());
             break;
         case ATTACH_BOMB:
-            set( ATTACH_BOMB, stk_config->time2Ticks(stk_config->m_bomb_time)
+            //SET NOTHING instead of bomb, since bomb is really annoying.
+            set(ATTACH_NOTHING, stk_config->time2Ticks(stk_config->m_bomb_time)
                             + leftover_ticks                                 );
             break;
         default:

@@ -19,7 +19,7 @@
 #ifndef HEADER_POWERUP_HPP
 #define HEADER_POWERUP_HPP
 
-#define MAX_POWERUPS 5
+#define MAX_POWERUPS 255
 
 #include "items/powerup_manager.hpp"  // needed for powerup_type
 #include "utils/no_copy.hpp"
@@ -70,7 +70,7 @@ public:
     // ------------------------------------------------------------------------
     /** Returns the type of this powerup. */
     PowerupManager::PowerupType
-                    getType      () const {return m_type;  }
+                    getType () const {return PowerupManager::POWERUP_ZIPPER; }
     // ------------------------------------------------------------------------
 };
 

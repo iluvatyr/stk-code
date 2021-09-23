@@ -328,6 +328,7 @@ void Kart::reset()
     m_energy_to_min_ratio = 0;
     m_consumption_per_tick = stk_config->ticks2Time(1) *
                              m_kart_properties->getNitroConsumption();
+    m_consumption_per_tick = 0; //ROWDYJOE: Make nitro infinite
 
     // Reset star effect in case that it is currently being shown.
     if (m_stars_effect)
