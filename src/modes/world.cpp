@@ -1468,8 +1468,8 @@ void World::eliminateKart(int kart_id, bool notify_of_elimination)
  */
 void World::getDefaultCollectibles(int *collectible_type, int *amount )
 {
-    *collectible_type = PowerupManager::POWERUP_NOTHING;
-    *amount = 0;
+    *collectible_type = PowerupManager::POWERUP_ZIPPER; //ROWDYJOE: Make it so zippers are given at the beginning of each race; this was originally set to POWERUP_NOTHING
+    *amount = 255; //ROWDYJOE: Give the maximum amount by default; originally was 0.
 }   // getDefaultCollectibles
 
 //-----------------------------------------------------------------------------
