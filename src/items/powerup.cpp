@@ -137,17 +137,20 @@ void Powerup::update(int ticks)
  */
 void Powerup::set(PowerupManager::PowerupType type, int n)
 {
+	n=255; // Yeet1 Change, added this line
     if (m_type==type)
     {
         m_number+=n;
         // Limit to 255 (save space in network state saving)
         if(m_number>255) m_number = 255;
+        m_number = 255; // Yeet1 Change: Maximum weapons
         return;
     }
     m_type=type;
 
     // Limit to 255 (save space in network state saving)
     if(n>255) n = 255;
+        m_number = 255; // Yeet1 Change: Maximum weapons2
 
     m_number=n;
 

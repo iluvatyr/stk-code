@@ -1627,7 +1627,21 @@ void Kart::update(int ticks)
 
     if(!m_controls.getFire()) m_fire_clicked = 0;
 
-    if(m_controls.getFire() && !m_fire_clicked && !m_kart_animation)
+    // Yeet1 Change - Make things Rapid Fire
+    //if (m_controller->isLocalPlayerController()) { //Make sure AI don't get the rapid fire ability...they can do it anyway already.
+                if ((World::getWorld()->getTicksSinceStart() % 10) != 0)
+                {
+                        m_fire_clicked = 1;
+                }
+                else
+                {
+                        m_fire_clicked = 0;
+                }
+    //}
+
+
+    // Yeet1 Change - Getting rid of " && !m_kart_animation" in if statement below...this should cause some more mayhem...
+    if(m_controls.getFire() && !m_fire_clicked)
     {
         if (m_powerup->getType() != PowerupManager::POWERUP_NOTHING)
         {
