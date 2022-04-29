@@ -116,6 +116,7 @@ PowerupManager::PowerupType
 
     for(unsigned int i=POWERUP_FIRST; i<=POWERUP_LAST; i++)
     {
+	if(powerup_names[i]=="parachute") return(POWERUP_CAKE);
         if(powerup_names[i]==name) return(PowerupType)i;
     }
     return POWERUP_NOTHING;
