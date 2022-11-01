@@ -1,5 +1,20 @@
 cmake_minimum_required(VERSION 2.8.4)
 
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Get the latest abbreviated commit hash of the working branch
+execute_process(
+  COMMAND git --no-pager describe --tags --always --dirty
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 # root CMakeLists for the SuperTuxKart project
 project(SuperTuxKart)
 set(PROJECT_VERSION "git")
@@ -35,6 +50,8 @@ option(USE_SYSTEM_WIIUSE "Use system WiiUse instead of the built-in version, whe
 option(USE_SQLITE3 "Use sqlite to manage server stats and ban list." ON)
 
 option(WEB_SUPPORT "Website integration tools" OFF)
+option(USE_RECORDS_V2 "Use records table with additional columns" OFF)
+
 if(APPLE)
     CMAKE_DEPENDENT_OPTION(DLOPEN_MOLTENVK "Use dlopen to load MoltenVK for Apple." ON
         "NOT IOS;NOT SERVER_ONLY" OFF)
@@ -89,7 +106,8 @@ endif()
 
 if((UNIX AND NOT APPLE) AND NOT SERVER_ONLY)
     if((${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm") OR 
-       (${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64"))
+       (${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64") OR
+       (${CMAKE_SYSTEM_PROCESSOR} MATCHES "riscv64"))
         option(USE_GLES2 "Use OpenGL ES2 renderer" ON)
     else()
         option(USE_GLES2 "Use OpenGL ES2 renderer" OFF)
@@ -148,6 +166,8 @@ if (CMAKE_GENERATOR_PLATFORM)
 endif()
 if(arch_lower MATCHES "arm64" OR arch_lower MATCHES "aarch64" OR ${CMAKE_GENERATOR} MATCHES "(ARM64)" OR ${BUILD_ARCH} MATCHES "(ARM64)")
     set(DEPENDENCIES "dependencies-win-aarch64")
+elseif(arch_lower MATCHES "armv7" OR arch_lower MATCHES "armv7" OR ${CMAKE_GENERATOR} MATCHES "(ARM)" OR ${BUILD_ARCH} MATCHES "(ARM)")
+    set(DEPENDENCIES "dependencies-win-armv7")
 elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(DEPENDENCIES "dependencies-win-x86_64")
 else()
@@ -242,9 +262,52 @@ else()
 endif()
 
 if(NOT SERVER_ONLY)
-    add_subdirectory("${PROJECT_SOURCE_DIR}/lib/graphics_engine")
-    include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/graphics_engine/include")
+    if(USE_SYSTEM_SQUISH)
+        find_library(SQUISH_LIBRARY NAMES squish libsquish)
+        find_path(SQUISH_INCLUDEDIR NAMES squish.h PATHS)
+    endif()
+    if (NOT SQUISH_LIBRARY OR NOT SQUISH_INCLUDEDIR)
+        add_subdirectory("${PROJECT_SOURCE_DIR}/lib/libsquish")
+        include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/libsquish")
+        SET(SQUISH_LIBRARY squish)
+    else()
+        include_directories("${SQUISH_INCLUDEDIR}")
+        MESSAGE(STATUS "Use system libsquish: ${SQUISH_LIBRARY}")
+    endif()
 endif()
+
+if(NOT SERVER_ONLY)
+    find_library(SHADERC_LIBRARY NAMES shaderc_shared libshaderc_shared)
+    find_path(SHADERC_INCLUDEDIR NAMES shaderc/shaderc.hpp PATHS)
+    if (NOT SHADERC_LIBRARY OR NOT SHADERC_INCLUDEDIR)
+        set(SHADERC_SKIP_INSTALL ON CACHE INTERNAL "Skip installation" FORCE)
+        set(SHADERC_SKIP_TESTS ON CACHE INTERNAL "Skip building tests" FORCE)
+        set(SHADERC_SKIP_EXAMPLES ON CACHE INTERNAL "Skip building examples" FORCE)
+        set(SHADERC_SKIP_COPYRIGHT_CHECK ON CACHE INTERNAL "Skip copyright check" FORCE)
+
+        set(SPIRV_HEADERS_SKIP_INSTALL ON CACHE INTERNAL "Skip install" FORCE)
+        set(SPIRV_HEADERS_SKIP_EXAMPLES ON CACHE INTERNAL "Skip building examples" FORCE)
+
+        set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE INTERNAL "Skip installation" FORCE)
+        set(SPIRV_SKIP_TESTS ON CACHE INTERNAL "Skip tests" FORCE)
+        set(SPIRV_SKIP_EXECUTABLES ON CACHE INTERNAL "Skip executables" FORCE)
+
+        set(ENABLE_GLSLANG_BINARIES OFF CACHE INTERNAL "Builds glslangValidator and spirv-remap" FORCE)
+        set(ENABLE_CTEST OFF CACHE INTERNAL "Enable ctest" FORCE)
+
+        add_subdirectory("${PROJECT_SOURCE_DIR}/lib/shaderc")
+        include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/shaderc/libshaderc/include")
+        SET(SHADERC_LIBRARY shaderc)
+        message(STATUS "System shaderc not found, use the bundled one.")
+    else()
+        include_directories("${SHADERC_INCLUDEDIR}")
+        MESSAGE(STATUS "Use system shaderc: ${SHADERC_LIBRARY}")
+    endif()
+
+    add_subdirectory("${PROJECT_SOURCE_DIR}/lib/graphics_engine")
+endif()
+# MiniGLM is there
+include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/graphics_engine/include")
 
 if (NOT SERVER_ONLY)
     # Add jpeg library
@@ -293,21 +356,6 @@ else()
     MESSAGE(STATUS "Use system libmcpp: ${MCPP_LIBRARY}")
 endif()
 
-if(NOT SERVER_ONLY)
-    if(USE_SYSTEM_SQUISH)
-        find_library(SQUISH_LIBRARY NAMES squish libsquish)
-        find_path(SQUISH_INCLUDEDIR NAMES squish.h PATHS)
-    endif()
-    if (NOT SQUISH_LIBRARY OR NOT SQUISH_INCLUDEDIR)
-        add_subdirectory("${PROJECT_SOURCE_DIR}/lib/libsquish")
-        include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/libsquish")
-        SET(SQUISH_LIBRARY squish)
-    else()
-        include_directories("${SQUISH_INCLUDEDIR}")
-        MESSAGE(STATUS "Use system libsquish: ${SQUISH_LIBRARY}")
-    endif()
-endif()
-
 if (NOT SERVER_ONLY)
     # SDL2
     find_library(SDL2_LIBRARY NAMES SDL2 libSDL2)
@@ -348,7 +396,7 @@ if(USE_WIIUSE)
         if(WIIUSE_BUILD)
             add_subdirectory("${PROJECT_SOURCE_DIR}/lib/wiiuse")
         endif()
-        include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/wiiuse/src")
+        include_directories(BEFORE "${PROJECT_SOURCE_DIR}/lib/wiiuse/src/include")
         set(WIIUSE_LIBRARIES "wiiuse" "bluetooth")
     endif()
 endif()
@@ -480,6 +528,11 @@ if(WEB_SUPPORT)
     add_definitions(-DENABLE_WEB_SUPPORT)
 endif()
 
+# Records table
+if(USE_RECORDS_V2)
+    add_definitions(-DENABLE_RECORDS_V2)
+endif()
+
 # Set some compiler options
 if(UNIX OR MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++0x")
@@ -552,7 +605,7 @@ if(APPLE AND NOT IOS)
 
     if(CMAKE_GENERATOR MATCHES "Xcode")
         add_custom_command(TARGET supertuxkart POST_BUILD
-            COMMAND ln -f -s ${PROJECT_SOURCE_DIR}/data ${CMAKE_BINARY_DIR}/bin/\${CONFIGURATION}/supertuxkart.app/Contents/Resources)
+            COMMAND ln -f -s ${PROJECT_SOURCE_DIR}/data ${CMAKE_BINARY_DIR}/\${CONFIGURATION}/supertuxkart.app/Contents/Resources)
     else()
         add_custom_command(TARGET supertuxkart POST_BUILD
             COMMAND ln -f -s ${PROJECT_SOURCE_DIR}/data ${CMAKE_BINARY_DIR}/bin/supertuxkart.app/Contents/Resources)
@@ -602,6 +655,9 @@ else()
         target_link_libraries(supertuxkart ${PTHREAD_LIBRARY})
     endif()
 endif()
+
+target_compile_definitions(supertuxkart PRIVATE "-DGIT_BRANCH=\"${GIT_BRANCH}\"")
+target_compile_definitions(supertuxkart PRIVATE "-DGIT_VERSION=\"${GIT_COMMIT_HASH}\"")
 
 # check if linking against libatomic is required
 include(CheckCXXSourceCompiles)
@@ -700,6 +756,10 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
 	target_link_libraries(supertuxkart nsl socket vorbisfile)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Haiku")
+	target_link_libraries(supertuxkart be network vorbisfile)
+endif()
+
 if (USE_DNS_C)
     target_link_libraries(supertuxkart dnsc)
 else()
@@ -744,7 +804,8 @@ if(NOT SERVER_ONLY)
         graphics_utils
         graphics_engine
         ${SDL2_LIBRARY}
-        tinygettext)
+        tinygettext
+        ${SHADERC_LIBRARY})
 endif()
 
 if(UNIX AND NOT APPLE)

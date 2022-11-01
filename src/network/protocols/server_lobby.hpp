@@ -349,6 +349,8 @@ private:
 
     std::string m_tournament_colors;
 
+    std::string m_tournament_votability;
+
     std::vector<std::string> m_tournament_arenas;
 
     std::vector<TrackFilter> m_tournament_track_filters;
@@ -379,6 +381,8 @@ private:
 
     std::set<std::string> m_usernames_white_list;
 
+    std::set<std::string> m_preserve;
+
     bool m_allowed_to_start;
 
     bool m_consent_on_replays;
@@ -392,6 +396,8 @@ private:
     bool m_shuffle_gp;
 
     std::atomic<unsigned> m_current_max_players_in_game;
+
+    std::map<std::string, int> m_saved_ffa_points;
 
 #ifdef ENABLE_WEB_SUPPORT
     std::set<std::string> m_web_tokens;
@@ -560,15 +566,18 @@ private:
     void changeColors();
     bool canRace(std::shared_ptr<STKPeer>& peer) const;
     bool canRace(STKPeer* peer) const;
+    bool canVote(std::shared_ptr<STKPeer>& peer) const;
+    bool canVote(STKPeer* peer) const;
     bool hasHostRights(std::shared_ptr<STKPeer>& peer) const;
     bool hasHostRights(STKPeer* peer) const;
-    std::vector<std::string> getMissingTournamentAssets(std::shared_ptr<STKPeer>& peer) const;
-    std::vector<std::string> getMissingTournamentAssets(STKPeer* peer) const;
+    std::vector<std::string> getMissingAssets(std::shared_ptr<STKPeer>& peer) const;
+    std::vector<std::string> getMissingAssets(STKPeer* peer) const;
     void loadTracksQueueFromConfig();
     std::string getGrandPrixStandings(bool showIndividual = false, bool showTeam = true) const;
-    void loadCustomScoring();
+    bool loadCustomScoring(std::string& scoring);
     void updateWorldSettings();
     void loadWhiteList();
+    void loadPreservedSettings();
     void changeLimitForTournament(bool goal_target);
     bool tournamentGoalsLimit(int game) const;
     bool tournamentColorsSwapped(int game) const;
@@ -660,9 +669,11 @@ public:
                                   { return m_available_modes.count(mode) > 0; }
     void setTemporaryTeam(const std::string& username, std::string& arg);
     void clearTemporaryTeams();
+    void shuffleTemporaryTeams(const std::map<int, int>& permutation);
     void resetGrandPrix();
     void erasePeerReady(std::shared_ptr<STKPeer> peer)
                                                  { m_peers_ready.erase(peer); }
+    void applyAllFilters(std::set<std::string>& maps);
 };   // class ServerLobby
 
 #endif // SERVER_LOBBY_HPP

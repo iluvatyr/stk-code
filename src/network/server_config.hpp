@@ -396,6 +396,13 @@ namespace ServerConfig
         "will be made 1.0. If false addon karts will use their original "
         "hitbox other than tux, all players having it restriction applies."));
 
+    SERVER_CFG_PREFIX BoolServerConfigParam m_real_addon_karts
+        SERVER_CFG_DEFAULT(BoolServerConfigParam(true, "real-addon-karts",
+        "If true, server will send its addon karts real physics (kart size, "
+        "length, type, etc) to client. If false or client chooses an addon "
+        "kart which server is missing, tux's kart physics and kart type of "
+        "the original addon is sent."));
+
     SERVER_CFG_PREFIX FloatServerConfigParam m_flag_return_timeout
         SERVER_CFG_DEFAULT(FloatServerConfigParam(20.0f, "flag-return-timeout",
         "Time in seconds when a flag is dropped a by player in CTF "
@@ -618,18 +625,12 @@ namespace ServerConfig
         "Use ## to hide the category from the player list."));
 
     SERVER_CFG_PREFIX StringServerConfigParam m_soccer_tournament_rules
-        SERVER_CFG_DEFAULT(StringServerConfigParam("nochat 10 TTTTG RRBBR;"
+        SERVER_CFG_DEFAULT(StringServerConfigParam("nochat 10 TTTTG RRBBR +++++;"
         ";;not %1;"
         "not %1 "
         "%2;;;",
         "soccer-tournament-rules",
         "A string specifying the match format."));
-
-    SERVER_CFG_PREFIX StringServerConfigParam m_soccer_tournament_enforced_tracks_string
-        SERVER_CFG_DEFAULT(StringServerConfigParam("",
-        "soccer-tournament-enforced-tracks",
-        "List of tracks tournament players should have to enter "
-        "(doesn't apply to spectators)."));
 
     SERVER_CFG_PREFIX StringServerConfigParam m_incompatible_advice
         SERVER_CFG_DEFAULT(StringServerConfigParam("",
@@ -715,6 +716,17 @@ namespace ServerConfig
         SERVER_CFG_DEFAULT(BoolServerConfigParam(false, "shuffle-grand-prix-grid",
         "If true, the GP grid is shuffled before each race, not only before "
         "the first one."));
+
+    SERVER_CFG_PREFIX BoolServerConfigParam m_preserve_battle_scores
+            SERVER_CFG_DEFAULT(BoolServerConfigParam(false, "preserve-battle-scores",
+            "If true, when a player leaves and rejoins the battle server, "
+            "the score is preserved (works for distinct names only for now)."));
+
+    SERVER_CFG_PREFIX StringServerConfigParam m_preserve_on_reset
+            SERVER_CFG_DEFAULT(StringServerConfigParam("", "preserve-on-reset",
+            "Whatever specified here wouldn't be reset when all players leave. "
+            "Possible options are mode, elim, laps, queue, replay, to include several "
+            "separate them by spaces, empty to include nothing."));
 
     // ========================================================================
     /** Server version, will be advanced if there are protocol changes. */

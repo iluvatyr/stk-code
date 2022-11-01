@@ -188,9 +188,14 @@
              description="Sets the timeout in seconds, whatever it may mean."
     />
     <command name="team"
-             usage="/team ([roygbp-] or color name) (username)"
+             usage="/team ([roygbpcms-] or color name) (username)"
              permissions="hammers"
-             description="Move a player to one of six teams denoted by square emojis (r - red, o - orange, y - yellow, g - green, b - blue, p – purple), or removes the player from the teams (“-”)."
+             description="Move a player to one of six teams denoted by emojis (r - red, o - orange, y - yellow, g - green, b - blue, p – purple, c - cyan, m - magenta, s - sky), or removes the player from the teams (“-”)."
+    />
+    <command name="swapteams"
+             usage="/swapteams (a string of color chars)"
+             permissions="hammers"
+             description="Generates a random permutation of given teams and replaces them with each other (if there are two teams given, they always swap)."
     />
     <command name="resetteams"
              usage="/resetteams"
@@ -203,9 +208,9 @@
              description="Put all players into a certain number of teams. The default number of teams is max(2, min(6, round(sqrt(number of players)))) unless there is 1 player."
     />
     <command name="resetgp"
-             usage="/resetgp"
+             usage="/resetgp [new number of games]"
              permissions="hammers"
-             description="Reset the Grand Prix to a state with no races and no results, but preserve teams."
+             description="Reset the Grand Prix to a state with no races and no results, but preserve teams. Changes the number of games in a Grand Prix if there is an argument specified."
     />
     <command name="cat+"
              usage="/cat+ (category) (username)"
@@ -236,6 +241,11 @@
              usage="/teamhit [0 | 1]"
              permissions="hammers"
              description="Toggles whether the teammate hits are punished ingame."
+    />
+    <command name="scoring"
+             usage="/scoring [(type) (int parameters)]"
+             permissions="hammers"
+             description="Sets Grand Prix scoring to the specified one. A call without arguments corresponds to built-in scoring, parameters should have the same format as in server config."
     />
     <command name="version"
              usage="/version"
@@ -350,9 +360,9 @@
         />
     -->
     <command name="slots"
-             usage="/slots (number of slots)"
+             usage="/slots [0..server capacity]"
              permissions="hammers; votable for non-spectators"
-             description="Sets the number of playable slots to a certain value."
+             description="Sets the number of playable slots to a specified value; tells the current number if called without arguments."
     />
     <command name="time"
              usage="/time"
@@ -363,6 +373,11 @@
              usage="/result"
              permissions="everyone"
              description="Displays the result of an ongoing game."
+    />
+    <command name="preserve"
+             usage="/preserve (mode|elim|laps|queue|replay) (0|1) or /preserve show"
+             permissions="hammers"
+             description="Changes whether the specified setting is preserved (if 1; or reset if 0) when all players quit"
     />
     <command name="addondownloadprogress"
              usage="/addondownloadprogress"

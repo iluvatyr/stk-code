@@ -234,6 +234,7 @@ private:
     void process_shuffle(Context& context);
     void process_timeout(Context& context);
     void process_team(Context& context);
+    void process_swapteams(Context& context);
     void process_resetteams(Context& context);
     void process_randomteams(Context& context);
     void process_resetgp(Context& context);
@@ -241,6 +242,7 @@ private:
     void process_troll(Context& context);
     void process_hitmsg(Context& context);
     void process_teamhit(Context& context);
+    void process_scoring(Context& context);
     void process_register(Context& context);
 #ifdef ENABLE_WEB_SUPPORT
     void process_token(Context& context);
@@ -258,7 +260,11 @@ private:
     void process_slots(Context& context);
     void process_time(Context& context);
     void process_result(Context& context);
+    void process_preserve(Context& context);
     void special(Context& context);
+
+    std::string getRandomMap() const;
+    std::string getRandomAddonMap() const;
 
 public:
 
@@ -279,7 +285,9 @@ public:
 
     void deleteUser(std::string& s);
 
-    static void restoreCmdByArgv(std::string& cmd, std::vector<std::string>& argv, char c, char d, char e, char f);
+    static void restoreCmdByArgv(std::string& cmd,
+            std::vector<std::string>& argv, char c, char d, char e, char f,
+            int from = 0);
 
     bool hasTypo(std::shared_ptr<STKPeer> peer, bool voting,
         std::vector<std::string>& argv, std::string& cmd, int idx,
