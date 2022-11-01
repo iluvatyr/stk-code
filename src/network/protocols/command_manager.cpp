@@ -56,7 +56,7 @@
 // #include "online/xml_request.hpp"
 // #include "race/race_manager.hpp"
 // #include "tracks/check_manager.hpp"
-// #include "tracks/track.hpp"
+#include "tracks/track.hpp"
 #include "tracks/track_manager.hpp"
 #include "utils/file_utils.hpp"
 #include "utils/log.hpp"
@@ -245,6 +245,7 @@ void CommandManager::initCommands()
     v.emplace_back("shuffle", &CM::process_shuffle, UP_HAMMER);
     v.emplace_back("timeout", &CM::process_timeout, UP_HAMMER);
     v.emplace_back("team", &CM::process_team, UP_HAMMER);
+    v.emplace_back("swapteams", &CM::process_swapteams, UP_HAMMER);
     v.emplace_back("resetteams", &CM::process_resetteams, UP_HAMMER);
     v.emplace_back("randomteams", &CM::process_randomteams, UP_HAMMER);
     v.emplace_back("resetgp", &CM::process_resetgp, UP_HAMMER, MS_DEFAULT, SS_LOBBY);
@@ -254,6 +255,7 @@ void CommandManager::initCommands()
     v.emplace_back("troll", &CM::process_troll, UP_HAMMER, MS_DEFAULT, SS_LOBBY);
     v.emplace_back("hitmsg", &CM::process_hitmsg, UP_HAMMER, MS_DEFAULT, SS_LOBBY);
     v.emplace_back("teamhit", &CM::process_teamhit, UP_HAMMER, MS_DEFAULT, SS_LOBBY);
+    v.emplace_back("scoring", &CM::process_scoring, UP_HAMMER, MS_DEFAULT, SS_LOBBY);
     v.emplace_back("version", &CM::process_text, UP_EVERYONE);
     v.emplace_back("clear", &CM::process_text, UP_EVERYONE);
     v.emplace_back("register", &CM::process_register, UP_EVERYONE);
@@ -282,6 +284,7 @@ void CommandManager::initCommands()
         v.emplace_back("slots", &CM::process_slots, UP_HAMMER | PE_VOTED_NORMAL, MS_DEFAULT, SS_LOBBY);
     v.emplace_back("time", &CM::process_time, UP_EVERYONE);
     v.emplace_back("result", &CM::process_result, UP_EVERYONE);
+    v.emplace_back("preserve", &CM::process_preserve, UP_HAMMER);
 
     v.emplace_back("addondownloadprogress", &CM::special, UP_EVERYONE);
     v.emplace_back("stopaddondownload", &CM::special, UP_EVERYONE);
@@ -292,11 +295,17 @@ void CommandManager::initCommands()
     v.emplace_back("liststkaddon", &CM::special, UP_EVERYONE);
     v.emplace_back("listlocaladdon", &CM::special, UP_EVERYONE);
 
-
-
-    addTextResponse("description", ServerConfig::m_motd);
+    addTextResponse("description", StringUtils::wideToUtf8(m_lobby->getGameSetup()->readOrLoadFromFile
+            ((std::string)ServerConfig::m_motd)));
     addTextResponse("moreinfo", StringUtils::wideToUtf8(m_lobby->m_help_message));
-    addTextResponse("version", "1.3-rc1 k 210fff beta");
+    std::string version = "1.3 k 210fff beta";
+#ifdef GIT_VERSION
+    version = std::string(GIT_VERSION);
+    #ifdef GIT_BRANCH
+        version += ", branch " + std::string(GIT_BRANCH);
+    #endif
+#endif
+    addTextResponse("version", version);
     addTextResponse("clear", std::string(30, '\n'));
 
     for (Command& command: m_commands) {
@@ -326,6 +335,7 @@ void CommandManager::initCommands()
     m_votables.emplace("gnu", 0.81);
     m_votables.emplace("slots", CommandVoting::DEFAULT_THRESHOLD);
     m_votables["gnu"].setCustomThreshold("gnu kart", 1.1);
+    m_votables["config"].setMerge(7);
 } // initCommands
 // ========================================================================
 
@@ -474,8 +484,21 @@ void CommandManager::handleCommand(Event* event, std::shared_ptr<STKPeer> peer)
         if (it != m_votables.end() && it->second.needsCheck())
         {
             auto response = it->second.process(m_users);
-            int count = response.first;
-            std::string msg = username + " voted \"" + cmd + "\", there are " + std::to_string(count) + " such votes";
+            std::map<std::string, int> counts = response.first;
+            std::string msg = username + " voted \"/" + cmd + "\", there are";
+            if (counts.size() == 1)
+                msg += " " + std::to_string(counts.begin()->second) + " such votes";
+            else
+            {
+                bool first_time = true;
+                for (auto& p: counts)
+                {
+                    if (!first_time)
+                        msg += ",";
+                    msg += " " + std::to_string(p.second) + " votes for such '" + p.first + "'";
+                    first_time = false;
+                }
+            }
             m_lobby->sendStringToAllPeers(msg);
             auto res = response.second;
             if (!res.empty())
@@ -483,9 +506,9 @@ void CommandManager::handleCommand(Event* event, std::shared_ptr<STKPeer> peer)
                 for (auto& p: res)
                 {
                     std::string new_cmd = p.first + " " + p.second;
-                    auto new_argv = StringUtils::splitQuoted(cmd, ' ', '"', '"', '\\');
+                    auto new_argv = StringUtils::splitQuoted(new_cmd, ' ', '"', '"', '\\');
                     CommandManager::restoreCmdByArgv(new_cmd, new_argv, ' ', '"', '"', '\\');
-                    std::string msg = "Command \"" + new_cmd + "\" has been successfully voted";
+                    std::string msg = "Command \"/" + new_cmd + "\" has been successfully voted";
                     m_lobby->sendStringToAllPeers(msg);
                     Context new_context(event, std::shared_ptr<STKPeer>(nullptr), new_argv, new_cmd, UP_EVERYONE, false);
                     execute(command, new_context);
@@ -553,7 +576,7 @@ void CommandManager::update()
                 std::string new_cmd = p.first + " " + p.second;
                 auto new_argv = StringUtils::splitQuoted(new_cmd, ' ', '"', '"', '\\');
                 CommandManager::restoreCmdByArgv(new_cmd, new_argv, ' ', '"', '"', '\\');
-                std::string msg = "Command \"" + new_cmd + "\" has been successfully voted";
+                std::string msg = "Command \"/" + new_cmd + "\" has been successfully voted";
                 m_lobby->sendStringToAllPeers(msg);
                 auto& command = m_name_to_command[new_argv[0]];
                 // We don't know the event though it is only needed in
@@ -677,7 +700,7 @@ void CommandManager::process_replay(Context& context)
 
 void CommandManager::process_start(Context& context)
 {
-    if (!ServerConfig::m_owner_less && (context.m_user_permissions & UP_HAMMER) == 0)
+    if (!ServerConfig::m_owner_less && (context.m_user_permissions & UP_CROWNED) == 0)
     {
         context.m_voting = true;
     }
@@ -696,6 +719,9 @@ void CommandManager::process_config(Context& context)
     int difficulty = m_lobby->getDifficulty();
     int mode = m_lobby->getGameMode();
     bool goal_target = (m_lobby->m_game_setup->hasExtraSeverInfo() ? m_lobby->isSoccerGoalTarget() : false);
+    bool user_chose_difficulty = false;
+    bool user_chose_mode = false;
+    bool user_chose_target = false;
     // bool gp = false;
     std::vector<std::vector<std::string>> mode_aliases = {
         {"m0"},
@@ -728,6 +754,7 @@ void CommandManager::process_config(Context& context)
             for (std::string& alias: mode_aliases[j]) {
                 if (argv[i] == alias) {
                     mode = j;
+                    user_chose_mode = true;
                 }
             }
         }
@@ -735,6 +762,7 @@ void CommandManager::process_config(Context& context)
             for (std::string& alias: difficulty_aliases[j]) {
                 if (argv[i] == alias) {
                     difficulty = j;
+                    user_chose_difficulty = true;
                 }
             }
         }
@@ -742,6 +770,7 @@ void CommandManager::process_config(Context& context)
             for (std::string& alias: goal_aliases[j]) {
                 if (argv[i] == alias) {
                     goal_target = (bool)j;
+                    user_chose_target = true;
                 }
             }
         }
@@ -758,11 +787,14 @@ void CommandManager::process_config(Context& context)
     }
     if (context.m_voting)
     {
-        // Definitely not the best format as there are extra words
+        // Definitely not the best format as there are extra words,
         // but I'll think how to resolve it
-        vote(context, "config mode", mode_aliases[mode][0]);
-        vote(context, "config difficulty", difficulty_aliases[difficulty][0]);
-        vote(context, "config target", goal_aliases[goal_target ? 1 : 0][0]);
+        if (user_chose_mode)
+            vote(context, "config mode", mode_aliases[mode][0]);
+        if (user_chose_difficulty)
+            vote(context, "config difficulty", difficulty_aliases[difficulty][0]);
+        if (user_chose_target)
+            vote(context, "config target", goal_aliases[goal_target ? 1 : 0][0]);
         return;
     }
     m_lobby->handleServerConfiguration(context.m_peer, difficulty, mode, goal_target);
@@ -837,9 +869,11 @@ void CommandManager::process_addons(Context& context)
     auto& argv = context.m_argv;
     bool more = (argv[0] == "moreaddons");
     bool more_own = (argv[0] == "getaddons");
+    bool apply_filters = false;
     if (argv.size() == 1)
     {
         argv.push_back("");
+        apply_filters = true;
         switch (m_lobby->m_game_mode.load())
         {
             case 0:
@@ -857,12 +891,16 @@ void CommandManager::process_addons(Context& context)
                 break;
         }
     }
-    const std::set<std::string>& from =
+    // removed const reference so that i can modify `from`
+    // without changing the original container, we copy everything anyway
+    std::set<std::string> from =
         (argv[1] == "kart" ? m_lobby->m_addon_kts.first :
         (argv[1] == "track" ? m_lobby->m_addon_kts.second :
         (argv[1] == "arena" ? m_lobby->m_addon_arenas :
         /*argv[1] == "soccer" ?*/ m_lobby->m_addon_soccers
     )));
+    if (apply_filters)
+        m_lobby->applyAllFilters(from);
     std::vector<std::pair<std::string, std::vector<std::string>>> result;
     for (const std::string& s: from)
         result.push_back({s, {}});
@@ -912,10 +950,10 @@ void CommandManager::process_addons(Context& context)
             result.clear();
             std::string asking_username = StringUtils::wideToUtf8(
                     context.m_peer->getPlayerProfiles()[0]->getName());
-            for (int i = 0; i < result2.size(); ++i)
+            for (unsigned i = 0; i < result2.size(); ++i)
             {
                 bool present = false;
-                for (int j = 0; j < result2[i].second.size(); ++j)
+                for (unsigned j = 0; j < result2[i].second.size(); ++j)
                 {
                     if (result2[i].second[j] == asking_username)
                     {
@@ -1595,7 +1633,7 @@ void CommandManager::process_standings(Context& context)
     bool isGnu = false;
     bool isGPTeams = false;
     bool isGPPlayers = false;
-    for (int i = 1; i < argv.size(); ++i)
+    for (unsigned i = 1; i < argv.size(); ++i)
     {
         if (argv[i] == "gp")
             isGP = true;
@@ -1823,6 +1861,10 @@ void CommandManager::process_queue(Context& context)
             error(context);
             return;
         }
+        if (argv[2] == "-")
+            argv[2] = getRandomMap();
+        else if (argv[2] == "-addon")
+            argv[2] = getRandomAddonMap();
         if (hasTypo(context.m_peer, context.m_voting, context.m_argv, context.m_cmd,
             2, m_stf_all_maps, 3, false, false))
             return;
@@ -1830,7 +1872,7 @@ void CommandManager::process_queue(Context& context)
         std::string msg = "Pushed " + argv[2]
             + " to the back of queue, current queue size: "
             + std::to_string(m_lobby->m_tracks_queue.size());
-        m_lobby->sendStringToPeer(msg, context.m_peer);
+        m_lobby->sendStringToAllPeers(msg);
         m_lobby->updatePlayerList();
     }
     else if (argv[1] == "push_front")
@@ -1840,6 +1882,10 @@ void CommandManager::process_queue(Context& context)
             error(context);
             return;
         }
+        if (argv[2] == "-")
+            argv[2] = getRandomMap();
+        else if (argv[2] == "-addon")
+            argv[2] = getRandomAddonMap();
         if (hasTypo(context.m_peer, context.m_voting, context.m_argv, context.m_cmd,
             2, m_stf_all_maps, 3, false, false))
             return;
@@ -1847,7 +1893,7 @@ void CommandManager::process_queue(Context& context)
         std::string msg = "Pushed " + argv[2]
             + " to the front of queue, current queue size: "
             + std::to_string(m_lobby->m_tracks_queue.size());
-        m_lobby->sendStringToPeer(msg, context.m_peer);
+        m_lobby->sendStringToAllPeers(msg);
         m_lobby->updatePlayerList();
     }
     else if (argv[1] == "pop" || argv[1] == "pop_front")
@@ -1864,7 +1910,7 @@ void CommandManager::process_queue(Context& context)
             msg += " current queue size: "
                 + std::to_string(m_lobby->m_tracks_queue.size());
         }
-        m_lobby->sendStringToPeer(msg, context.m_peer);
+        m_lobby->sendStringToAllPeers(msg);
         m_lobby->updatePlayerList();
     }
     else if (argv[1] == "pop_back")
@@ -1881,7 +1927,7 @@ void CommandManager::process_queue(Context& context)
             msg += " current queue size: "
                 + std::to_string(m_lobby->m_tracks_queue.size());
         }
-        m_lobby->sendStringToPeer(msg, context.m_peer);
+        m_lobby->sendStringToAllPeers(msg);
         m_lobby->updatePlayerList();
     }
 } // process_queue
@@ -1899,12 +1945,12 @@ void CommandManager::process_allowstart(Context& context)
     if (argv[1] == "0")
     {
         m_lobby->m_allowed_to_start = false;
-        msg = "Now starting a race is forbidden";
+        msg = "Now starting a game is forbidden";
     }
     else
     {
         m_lobby->m_allowed_to_start = true;
-        msg = "Now starting a race is allowed";
+        msg = "Now starting a game is allowed";
     }
     m_lobby->sendStringToPeer(msg, context.m_peer);
 } // process_allowstart
@@ -1968,6 +2014,60 @@ void CommandManager::process_team(Context& context)
 } // process_team
 // ========================================================================
 
+void CommandManager::process_swapteams(Context& context)
+{
+    auto& argv = context.m_argv;
+    if (argv.size() != 2)
+    {
+        error(context);
+        return;
+    }
+    // todo move list of teams and checking teams to another unit later,
+    // it is awful now
+    std::map<char, char> permutation_map;
+    std::map<int, int> permutation_map_int;
+    for (char c: argv[1])
+    {
+        std::string type(1, c);
+        // todo remove that link to first char, it is awful
+        if (m_lobby->m_team_name_to_index.count(type) == 0)
+            continue;
+        int index = m_lobby->m_team_name_to_index[type];
+        char c1 = m_lobby->m_team_default_names[index][0];
+        if (m_lobby->m_team_name_to_index.count(type)) {
+            permutation_map[c1] = 0;
+        }
+    }
+    std::string permutation;
+    for (auto& p: permutation_map)
+        permutation.push_back(p.first);
+    std::string msg = "Shuffled some teams: " + permutation + " -> ";
+    if (permutation.size() == 2)
+        swap(permutation[0], permutation[1]);
+    else
+    {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(permutation.begin(), permutation.end(), g);
+    }
+    msg += permutation;
+    auto it = permutation_map.begin();
+    for (unsigned i = 0; i < permutation.size(); i++, it++)
+    {
+        it->second = permutation[i];
+    }
+    for (auto& p: permutation_map)
+    {
+        int from = m_lobby->m_team_name_to_index[std::string(1, p.first)];
+        int to = m_lobby->m_team_name_to_index[std::string(1, p.second)];
+        permutation_map_int[from] = to;
+    }
+    m_lobby->shuffleTemporaryTeams(permutation_map_int);
+    m_lobby->sendStringToPeer(msg, context.m_peer); // todo make public?
+    m_lobby->updatePlayerList();
+} // process_swapteams
+// ========================================================================
+
 void CommandManager::process_resetteams(Context& context)
 {
     std::string msg = "Teams are reset now";
@@ -1983,20 +2083,26 @@ void CommandManager::process_randomteams(Context& context)
     int players_number = 0;
     for (auto& peer : STKHost::get()->getPeers())
     {
+        if (!m_lobby->canRace(peer))
+            continue;
         if (peer->alwaysSpectate())
             continue;
         players_number += peer->getPlayerProfiles().size();
         for (auto& profile : peer->getPlayerProfiles())
             profile->setTemporaryTeam(-1);
     }
-
+    if (players_number == 0) {
+        std::string msg = "No one can play!";
+        m_lobby->sendStringToPeer(msg, context.m_peer);
+        return;
+    }
     int teams_number = -1;
     if (argv.size() < 2 || !StringUtils::parseString(argv[1], &teams_number)
-        || teams_number < 1 || teams_number > 6)
+        || teams_number < 1 || teams_number > 9)
     {
         teams_number = (int)round(sqrt(players_number));
-        if (teams_number > 6)
-            teams_number = 6;
+        if (teams_number > 9)
+            teams_number = 9;
         if (players_number > 1 && teams_number <= 1)
             teams_number = 2;
     }
@@ -2005,7 +2111,7 @@ void CommandManager::process_randomteams(Context& context)
             "Created %d teams for %d players", teams_number, players_number);
     std::vector<int> available_colors;
     std::vector<int> profile_colors;
-    for (int i = 1; i <= 6; ++i)
+    for (int i = 1; i <= 9; ++i)
         available_colors.push_back(i);
 
     std::random_device rd;
@@ -2040,6 +2146,17 @@ void CommandManager::process_randomteams(Context& context)
 void CommandManager::process_resetgp(Context& context)
 {
     std::string msg = "GP is now reset";
+    auto& argv = context.m_argv;
+    if (argv.size() >= 2) {
+        int number_of_games;
+        if (!StringUtils::parseString(argv[1], &number_of_games)
+            || number_of_games <= 0)
+        {
+            error(context);
+            return;
+        }
+        m_lobby->getGameSetup()->setGrandPrixTrack(number_of_games);
+    }
     m_lobby->resetGrandPrix();
     m_lobby->sendStringToAllPeers(msg);
 } // process_resetgp
@@ -2078,6 +2195,7 @@ void CommandManager::process_cat(Context& context)
         if (hasTypo(context.m_peer, context.m_voting, context.m_argv, context.m_cmd,
             2, m_stf_present_users, 3, false, true))
             return;
+        player = argv[2];
         m_lobby->m_player_categories[category].erase(player);
         m_lobby->m_categories_for_player[player].erase(category);
         m_lobby->updatePlayerList();
@@ -2167,6 +2285,22 @@ void CommandManager::process_teamhit(Context& context)
     }
     m_lobby->sendStringToAllPeers(msg);
 } // process_teamhit
+// ========================================================================
+
+void CommandManager::process_scoring(Context& context)
+{
+    std::string msg;
+    auto& argv = context.m_argv;
+    std::string cmd2;
+    CommandManager::restoreCmdByArgv(cmd2, argv, ' ', '"', '"', '\\', 1);
+    if (m_lobby->loadCustomScoring(cmd2)) {
+        msg = "Scoring set to \"" + cmd2 + "\"";
+        m_lobby->sendStringToAllPeers(msg);
+    } else {
+        msg = "Scoring could not be parsed from \"" + cmd2 + "\"";
+        m_lobby->sendStringToPeer(msg, context.m_peer);
+    }
+} // process_scoring
 // ========================================================================
 
 void CommandManager::process_register(Context& context)
@@ -2392,8 +2526,6 @@ void CommandManager::process_role(Context& context)
     }
     for (const std::string& username: changed_usernames)
     {
-        Log::info("CommandManager", "SoccerMatchLog: Role of %s changed to %s",
-             username.c_str(), role.c_str());
         m_lobby->m_tournament_red_players.erase(username);
         m_lobby->m_tournament_blue_players.erase(username);
         m_lobby->m_tournament_referees.erase(username);
@@ -2408,7 +2540,7 @@ void CommandManager::process_role(Context& context)
             StringUtils::utf8ToWide(username));
         std::vector<std::string> missing_assets;
         if (player_peer)
-            missing_assets = m_lobby->getMissingTournamentAssets(player_peer);
+            missing_assets = m_lobby->getMissingAssets(player_peer);
         bool fail = false;
         switch (role[0])
         {
@@ -2418,7 +2550,7 @@ void CommandManager::process_role(Context& context)
                 if (!missing_assets.empty())
                 {
                     fail = true;
-                    break;
+//                    break;
                 }
                 if (m_lobby->tournamentColorsSwapped(m_lobby->m_tournament_game))
                 {
@@ -2446,7 +2578,7 @@ void CommandManager::process_role(Context& context)
                 if (!missing_assets.empty())
                 {
                     fail = true;
-                    break;
+//                    break;
                 }
                 if (m_lobby->tournamentColorsSwapped(m_lobby->m_tournament_game))
                 {
@@ -2474,7 +2606,7 @@ void CommandManager::process_role(Context& context)
                 if (!missing_assets.empty())
                 {
                     fail = true;
-                    break;
+//                    break;
                 }
                 m_lobby->m_tournament_referees.insert(username);
                 if (permanent)
@@ -2501,12 +2633,17 @@ void CommandManager::process_role(Context& context)
         }
         std::string msg;
         if (!fail)
+        {
             msg = StringUtils::insertValues(
                 "Successfully changed role to %s for %s", role, username);
+            Log::info("CommandManager", "SoccerMatchLog: Role of %s changed to %s",
+                username.c_str(), role.c_str());
+        }
         else
         {
             msg = StringUtils::insertValues(
-                "Failed to change role to %s for %s - missing assets:", role, username);
+                "Successfully changed role to %s for %s, but there are missing assets:",
+                role, username);
             for (unsigned i = 0; i < missing_assets.size(); i++)
             {
                 if (i)
@@ -2624,12 +2761,20 @@ void CommandManager::process_test(Context& context)
 
 void CommandManager::process_slots(Context& context)
 {
+    // todo allow non-hammers to invoke /slots without parameters
     auto& argv = context.m_argv;
     bool fail = false;
-    unsigned number = 0;
-    if (argv.size() < 2 || !StringUtils::parseString<unsigned>(argv[1], &number))
+    int number = 0;
+    if (argv.size() < 2)
+    {
+        int current = m_lobby->m_current_max_players_in_game.load();
+        std::string msg = "Number of slots is currently " + std::to_string(current);
+        m_lobby->sendStringToPeer(msg, context.m_peer);
+        return;
+    }
+    if (argv.size() < 2 || !StringUtils::parseString<int>(argv[1], &number))
         fail = true;
-    else if (number <= 0 || (int)number > ServerConfig::m_server_max_players)
+    else if (number <= 0 || number > ServerConfig::m_server_max_players)
         fail = true;
     if (fail)
     {
@@ -2641,7 +2786,7 @@ void CommandManager::process_slots(Context& context)
         vote(context, "slots", argv[1]);
         return;
     }
-    m_lobby->m_current_max_players_in_game.store(number);
+    m_lobby->m_current_max_players_in_game.store((unsigned)number);
     m_lobby->updatePlayerList();
     std::string msg = "Number of playable slots is now " + argv[1];
     m_lobby->sendStringToAllPeers(msg);
@@ -2674,7 +2819,50 @@ void CommandManager::process_result(Context& context)
     else
         msg = "This command is not yet supported for this game mode";
     m_lobby->sendStringToPeer(msg, peer);
-} // process_time
+} // process_result
+// ========================================================================
+
+void CommandManager::process_preserve(Context& context)
+{
+    auto& peer = context.m_peer;
+    auto& argv = context.m_argv;
+    std::string msg = "";
+    if (1 >= argv.size())
+    {
+        error(context);
+        return;
+    }
+    if (argv.size() == 2)
+    {
+        if (argv[1] == "show")
+        {
+            msg = "Preserved settings:";
+            for (const std::string& str: m_lobby->m_preserve)
+                msg += " " + str;
+        }
+        else
+        {
+            error(context);
+            return;
+        }
+    }
+    else
+    {
+        if (argv[2] == "0")
+        {
+            msg = StringUtils::insertValues(
+                "'%s' isn't preserved on server reset anymore", argv[1].c_str());
+            m_lobby->m_preserve.erase(argv[1]);
+        }
+        else
+        {
+            msg = StringUtils::insertValues(
+                "'%s' is now preserved on server reset", argv[1].c_str());
+            m_lobby->m_preserve.insert(argv[1]);
+        }
+    }
+    m_lobby->sendStringToPeer(msg, peer);
+} // process_preserve
 // ========================================================================
 
 void CommandManager::special(Context& context)
@@ -2686,6 +2874,39 @@ void CommandManager::special(Context& context)
 } // special
 // ========================================================================
 
+std::string CommandManager::getRandomMap() const
+{
+    std::set<std::string> items;
+    for (const std::string& s: m_lobby->m_entering_kts.second) {
+        items.insert(s);
+    }
+    m_lobby->applyAllFilters(items);
+    if (items.empty())
+        return "";
+    RandomGenerator rg;
+    std::set<std::string>::iterator it = items.begin();
+    std::advance(it, rg.get((int)items.size()));
+    return *it;
+} // getRandomMap
+// ========================================================================
+
+std::string CommandManager::getRandomAddonMap() const
+{
+    std::set<std::string> items;
+    for (const std::string& s: m_lobby->m_entering_kts.second) {
+        Track* t = track_manager->getTrack(s);
+        if (t->isAddon())
+            items.insert(s);
+    }
+    m_lobby->applyAllFilters(items);
+    if (items.empty())
+        return "";
+    RandomGenerator rg;
+    std::set<std::string>::iterator it = items.begin();
+    std::advance(it, rg.get((int)items.size()));
+    return *it;
+} // getRandomAddonMap
+// ========================================================================
 void CommandManager::addUser(std::string& s)
 {
     m_users.insert(s);
@@ -2708,15 +2929,17 @@ void CommandManager::deleteUser(std::string& s)
 } // deleteUser
 // ========================================================================
 
-void CommandManager::restoreCmdByArgv(std::string& cmd, std::vector<std::string>& argv, char c, char d, char e, char f)
+void CommandManager::restoreCmdByArgv(std::string& cmd,
+        std::vector<std::string>& argv, char c, char d, char e, char f,
+        int from)
 {
     cmd.clear();
-    for (unsigned i = 0; i < argv.size(); ++i) {
+    for (unsigned i = from; i < argv.size(); ++i) {
         bool quoted = false;
         if (argv[i].find(c) != std::string::npos || argv[i].empty()) {
             quoted = true;
         }
-        if (i > 0) {
+        if (i > from) {
             cmd.push_back(c);
         }
         if (quoted) {

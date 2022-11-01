@@ -23,6 +23,7 @@
 
 #include "utils/string_utils.hpp"
 #include "utils/log.hpp"
+#include "random_generator.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -48,6 +49,16 @@ TrackFilter::TrackFilter(std::string input)
     {
         if (tokens[i] == "" || tokens[i] == " ")
             continue;
+        else if (tokens[i] == "random")
+            m_pick_random = true;
+        else if (tokens[i] == "available")
+            m_include_unavailable = false;
+        else if (tokens[i] == "unavailable")
+            m_include_available = false;
+        else if (tokens[i] == "official")
+            m_include_addons = false;
+        else if (tokens[i] == "addon")
+            m_include_official = false;
         else if (tokens[i] == "not" || tokens[i] == "no")
         {
             good = false;
@@ -70,7 +81,7 @@ TrackFilter::TrackFilter(std::string input)
         {
             int index;
             std::string cut = tokens[i].substr(1);
-            if (!StringUtils::parseString<int>(cut, &index) || index < 0)
+            if (!StringUtils::parseString<int>(cut, &index))
             {
                 Log::warn("TrackFilter", "Unable to parse wildcard index "
                     "from \"%s\", omitting it", tokens[i].c_str());
@@ -103,9 +114,9 @@ TrackFilter::TrackFilter(std::string input)
             else
             {
                 if (good)
-                    allowed.push_back(tokens[i]);
+                    allowed.insert(tokens[i]);
                 else
-                    forbidden.push_back(tokens[i]);
+                    forbidden.insert(tokens[i]);
             }
         }
     }
@@ -115,6 +126,8 @@ std::string TrackFilter::get(std::vector<std::string>& vec, int index)
 {
     if (index >= 0 && index < vec.size())
         return vec[index];
+    if (index < 0 && index >= -(int)vec.size())
+        return vec[(int)vec.size() + index];
     return "";
 }   // get
 //-----------------------------------------------------------------------------
@@ -132,37 +145,39 @@ void TrackFilter::apply(int num_players, std::set<std::string>& input,
     std::set<std::string> copy = input;
     input.clear();
 
+    std::set<std::string> names_allowed, names_forbidden;
+
+    for (int x: w_allowed)
+    {
+        std::string name = get(wildcards, x);
+        if (!name.empty())
+            names_allowed.insert(name);
+    }
+    for (int x: w_forbidden)
+    {
+        std::string name = get(wildcards, x);
+        if (!name.empty())
+            names_forbidden.insert(name);
+    }
+
     for (const std::string& s: copy)
     {
+        bool addon = (s.length() >= 6 && s.substr(6) == "addon_");
         bool yes = false;
         bool no = false;
         auto it = max_players.find(s);
         if (it != max_players.end() && it->second < num_players)
             continue;
-        for (int x: w_allowed)
-            if (get(wildcards, x) == s)
-            {
-                yes = true;
-                break;
-            }
-        for (int x: w_forbidden)
-            if (get(wildcards, x) == s)
-            {
-                no = true;
-                break;
-            }
-        for (std::string x: allowed)
-            if (x == s)
-            {
-                yes = true;
-                break;
-            }
-        for (std::string x: forbidden)
-            if (x == s)
-            {
-                no = true;
-                break;
-            }
+        if (names_allowed.count(s) || allowed.count(s))
+            yes = true;
+        if (names_forbidden.count(s) || forbidden.count(s))
+            no = true;
+        if ((!addon && !m_include_official)
+            || (addon && !m_include_addons))
+        {
+            yes = false; // regardless of whether it's allowed or not
+            no = true;
+        }
         if (yes && no)
         {
             Log::warn("TrackFilter", "Track requirements contradict for %s, "
@@ -176,6 +191,15 @@ void TrackFilter::apply(int num_players, std::set<std::string>& input,
                 no = true;
         if (yes)
             input.insert(s);
+    }
+    if (m_pick_random && input.size() > 0)
+    {
+        RandomGenerator rg;
+        std::set<std::string>::iterator it = input.begin();
+        std::advance(it, rg.get((int)input.size()));
+        std::string choice = *it;
+        input.clear();
+        input.insert(choice);
     }
 }   // apply (2)
 //-----------------------------------------------------------------------------
